@@ -1,0 +1,51 @@
+TASK: Build "Kestrel Run", an original 3D flight game for the make.fun best-flight-game bounty, in ~/flight-game (a git repo already initialized by the kit with anchor + LICENSE + .makefun/owner.json — do NOT touch .git, LICENSE, or .makefun/). Kit lives at ~/makefun-campaign/kit-flight-game/best-flight-game-20261126-0057-kit (its RULES.txt is authoritative if anything below conflicts). Deadline pressure is real: produce a COMPLETE, working game first; polish only with time left. Write your progress + final report to build/REPORT.md incrementally (build/ is a scratch dir, not part of the entry).
+
+## Deliverable layout (exactly)
+- main.ts (repo root): hand-in program — copies game/ and screenshots/ into the output dir (MAKEFUN_OUTPUT_DIR env or /output) and writes dossier.json there using buildDossier from ./vendor/makefun-game.ts. Model it on the kit starter's main.ts contract (starter at kit's starter/main.ts) but WRITE IT YOURSELF in this session.
+- vendor/makefun-game.ts: byte-identical copy of the kit's starter/vendor/makefun-game.ts (cp it in this session; the gate compares byte for byte).
+- serve.ts (repo root): a small static file server for game/ on http://localhost:8080 (write it yourself, Node stdlib only) for local playtesting.
+- game/index.html + game/src/*.js: the game, classic scripts (no modules, no import maps), loaded in a fixed order. NO network loads of any kind: no CDN, no fonts, no external URLs anywhere in game/.
+- game/vendor/three.min.js: three.js r149 UMD minified build, vendored (try downloading https://unpkg.com/three@0.149.0/build/three.min.js or the jsdelivr equivalent; if the network fails, look for a local copy under ~/opengame-jam or ~/token-radar on this machine and copy that). It must be the *.min.js file so it is excluded from source counts.
+- screenshots/: leave the folder with ONE placeholder note file removed later — actually: create the folder and put nothing in it yet (screenshots are captured after you finish; do not copy the starter's screenshots, they belong to a house game).
+- shots.json (repo root): exactly these four entries:
+  [{"name":"1-cover.jpg","query":"?shot=cover&seed=7"},{"name":"2-chase.jpg","query":"?shot=chase&seed=7"},{"name":"3-approach.jpg","query":"?shot=approach&seed=7"},{"name":"4-briefing.jpg","query":"?shot=briefing&seed=7"}]
+- README.md (repo root): title, one-paragraph pitch, controls table, how to run (node serve.ts), the three live badges:
+  https://make.fun/badge/best-flight-game-20261126-0057.svg
+  https://make.fun/badge/best-flight-game-20261126-0057/shidu110/flight-game-01/rank.svg
+  https://make.fun/badge/best-flight-game-20261126-0057/shidu110/flight-game-01/reward.svg
+
+## The game (original; no commercial game's names/art/levels)
+Golden-hour archipelago, one coherent low-poly style: warm sun, teal sea, green-and-tan islands, soft fog, gradient sky. Player flies the fictional "Kestrel K-1" single-prop bush plane.
+
+World (game/src/world.js): seeded procedural archipelago on a 4000x4000 m sea — a heightmap island cluster (main island + 5 smaller), vertex-colored terrain (sand/grass/rock by height and slope), animated water plane, gradient sky dome + sun, drifting low-poly clouds, cone trees and rocks scattered by the seeded RNG, a lighthouse, and a 600 m runway on the main island (dark strip, white threshold markings, edge lights) on flat ground near sea level.
+
+Aircraft (game/src/aircraft.js): Kestrel K-1 built from three.js primitives with flat shading — fuselage, high wing with struts, tail, spinning prop (blur disc + blades), fixed gear with wheels, glass canopy, cream fuselage with red livery stripes. It must look built, not like a single box.
+
+Cockpit (game/src/cockpit.js): first-person cockpit — frame pillars, glareshield, yoke that tilts with input, and a panel with SIX live round gauges drawn on canvas textures and updated every frame: airspeed, altimeter, attitude indicator (moves with pitch/roll), heading, vertical speed, tachometer. Gauges have lit faces (bright dial, glowing needles) so screenshots read "instruments lit".
+
+HUD (game/src/hud.js): DOM overlay, large readable type — ALT / SPD / HDG readouts top-left, fuel and hull bars top-right, mission banner top-center, controls hint bottom. Must stay readable when the page is shrunk to 768x480.
+
+Flight model (game/src/flight.js): arcade but disciplined — throttle 0-100% (Shift/Ctrl or W/S), pitch (Up/Down), roll (Left/Right) inducing banked turns, rudder (A/D), lift rising with speed, stall below ~26 m/s (nose drop + shake), takeoff roll on the runway, terrain/water collision = crash, landing gear always down; gentle runway touchdown = success, hard touchdown = hull damage.
+
+Missions (game/src/missions.js): a sortie loop — briefing card (mission name, goal, controls) -> takeoff -> fly through 10 glowing rings in order (next ring pulses, pass = chime + banner + counter) -> return and land on the runway before fuel runs out. Fuel drains with throttle; landing refuels and repairs. Hull damage from hard contact; hull 0 = crashed screen with restart. Score = rings + time bonus. Free-flight toggle (key F) hides the course.
+
+Input (game/src/input.js): keyboard state + mouse (mouse X steers roll when held? keep simple: keys primary, mouse drag looks around in cockpit). Camera keys: C toggles cockpit / chase / tower-flyby.
+
+Audio (game/src/audio.js): tiny WebAudio — engine hum tied to RPM, wind tied to speed, ring chime, touchdown thud; M mutes; start on first interaction. Keep it under ~80 lines.
+
+Shot modes (game/src/shots.js): when the URL has ?shot=<name>&seed=7, set a deterministic staged scene and keep the world alive (prop spinning, water moving, gauges live) with physics frozen at the staged state:
+- cover: COCKPIT view, 120 m over the sea heading at ring 3, main island and runway visible ahead-left, gauges lit, HUD showing real values. This is the cover: it must show cockpit + instruments + terrain + a ring ahead + runway in one frame.
+- chase: CHASE view, aircraft banking ~25 degrees over a coastline, two rings ahead, golden light.
+- approach: low chase view on short final, aircraft aligned with the runway, gear down, threshold lights ahead.
+- briefing: the start/briefing screen over a slow scenic orbit of the archipelago (aircraft parked on the runway, course rings visible in the distance).
+Normal load (no ?shot) starts at the briefing screen on the runway, engine off.
+
+Main (game/src/main.js): boot, fixed-step loop, camera director, resize handling, pause on blur. Config (game/src/config.js): palette, sizes, tuning constants. Random (game/src/random.js): mulberry32 seeded RNG.
+
+## Hard constraints
+- Own source (game/src + index.html + main.ts) target <= 130 KB total; split into the files above, one clear job each, functions named for what they do (the judge reads the outline).
+- No external URLs in game/ at all. System font stack only.
+- Everything must parse: run `node --check` on every .js file and fix failures.
+- After writing: run `mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts` (with 3 temporary placeholder screenshots you generate as simple JPEGs via any tool, ONLY so main.ts runs — mark them TEMP in REPORT.md; they will be replaced) and then the kit check: `cd <kit> && node cli/makefun.mjs check --kit . --repo ~/flight-game --worktree` — expect everything except transcripts_present to pass; record the result in REPORT.md.
+- Do NOT commit (git is read-only in your sandbox; Muse commits via SSH) and do NOT submit.
+- REPORT.md must end with: file list with byte sizes, node --check results, the check output summary, how each shot mode was staged (positions/headings), and any known visual risks you could not verify (you cannot run a browser in the sandbox — say so plainly).
