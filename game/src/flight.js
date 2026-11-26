@@ -1,3 +1,5 @@
+// Job: Simulate aircraft motion, fuel, touchdown damage and service.
+// Exports: KR.Flight.
 (function () {
   'use strict';
   const C = KR.Config;
@@ -6,7 +8,7 @@
     constructor(world) {
       this.world = world;
       this.position = new THREE.Vector3();
-      this.velocity = new THREE.Vector3();
+      this.crosswind = new THREE.Vector3();
       this.heading = 0;
       this.pitch = 0;
       this.roll = 0;
@@ -32,8 +34,11 @@
       this.pitch = 0; this.roll = 0; this.throttle = 0; this.speed = 0;
       this.verticalSpeed = 0; this.altitude = this.position.y; this.rpm = 0;
       this.fuel = 100; this.hull = 100;
-      this.velocity.set(0, 0, 0);
+      this.crosswind.set(0, 0, 0);
       this.onGround = true; this.airborne = false; this.crashed = false; this.landed = false;
+      this.simTime = 0;
+      this.shake = 0;
+      this.touchdownMessage = '';
     }
     setState(state) {
       this.position.set(state.x, state.y, state.z);
@@ -50,10 +55,12 @@
       this.onGround = !!state.onGround;
       this.airborne = !this.onGround;
       this.crashed = false;
-      this.velocity.set(Math.sin(this.heading) * this.speed, this.verticalSpeed, -Math.cos(this.heading) * this.speed);
+      this.landed = false;
+      this.simTime = 0;
     }
     update(delta, input, active) {
       if (this.crashed) return;
+      this.simTime += delta;
       this.landed = false;
       if (active) {
         if (input.throttleUp) this.throttle += 32 * delta;
@@ -71,7 +78,7 @@
         const stall = this.speed < C.flight.stallSpeed && !this.onGround;
         if (stall) {
           this.pitch -= delta * 0.72;
-          this.roll += Math.sin(performance.now() * 0.018) * delta * 0.5;
+          this.roll += Math.sin(this.simTime * 18) * delta * 0.5;
           this.shake = Math.max(this.shake, 0.36);
         }
         if (!this.onGround) this.heading += Math.tan(this.roll) * 0.33 * delta * C.clamp(this.speed / 34, 0, 1.2);
@@ -82,15 +89,18 @@
         this.speed = C.clamp(this.speed, 0, C.flight.maxSpeed);
         const rpmTarget = this.fuel > 0 ? 600 + this.throttle * 24 + Math.max(0, this.speed - 30) * 6 : this.speed * 9;
         this.rpm = C.damp(this.rpm, rpmTarget, 2.5, delta);
-        this.fuel = Math.max(0, this.fuel - (C.flight.idleFuel + this.throttle * C.flight.fuelRate) * delta);
-        if (this.fuel <= 0) this.throttle = Math.max(0, this.throttle - 10 * delta);
+        this.updateFuelAndHullState(delta);
       }
       const liftFactor = C.clamp((this.speed - 20) / 24, 0, 1);
-      this.verticalSpeed = Math.sin(this.pitch) * this.speed * 0.78 * liftFactor + (this.speed < C.flight.stallSpeed && !this.onGround ? -8.5 : 0);
-      if (!this.onGround) this.verticalSpeed -= Math.abs(Math.sin(this.roll)) * 1.8;
-      this.verticalSpeed = C.damp(this.verticalSpeed, liftFactor > 0 ? this.verticalSpeed : -12, 1.8, delta);
+      let targetVS = Math.sin(this.pitch) * this.speed * 0.78 * liftFactor;
+      if (!this.onGround) {
+        if (this.speed < C.flight.stallSpeed) targetVS -= 8.5;
+        targetVS -= Math.abs(Math.sin(this.roll)) * 1.8;
+      }
+      this.verticalSpeed = C.damp(this.verticalSpeed, targetVS, 4.0, delta);
       this.position.x += Math.sin(this.heading) * this.speed * Math.cos(this.pitch) * delta;
       this.position.z -= Math.cos(this.heading) * this.speed * Math.cos(this.pitch) * delta;
+      if (!this.onGround) this.position.addScaledVector(this.crosswind, delta);
       if (this.onGround) this.verticalSpeed = 0;
       this.position.y += this.verticalSpeed * delta;
       const ground = this.world.heightAt(this.position.x, this.position.z);
@@ -104,7 +114,10 @@
       }
       if (this.onGround) {
         this.position.y = ground + C.groundClearance;
-        if (!this.world.isRunway(this.position.x, this.position.z)) this.crash(ground <= 0 ? 'RUNWAY OVERRUN · WATER' : 'LEFT THE STRIP');
+        if (!this.world.isRunway(this.position.x, this.position.z)) {
+          this.crash(ground <= 0 ? 'RUNWAY OVERRUN · WATER' : 'LEFT THE STRIP');
+          return;
+        }
       }
       if (this.position.y < Math.max(ground, water) + C.groundClearance) {
         const runway = this.world.isRunway(this.position.x, this.position.z);
@@ -116,18 +129,7 @@
             this.pitch *= 0.4; this.roll *= 0.3;
             this.onGround = true;
             this.airborne = false;
-            if (impact < 4.5 && this.speed < 50) {
-              this.landed = true;
-              this.speed *= 0.86;
-              this.touchdownMessage = impact > 3 ? 'FIRM TOUCHDOWN · HULL SCRAPED' : 'GREASER · NICE ARRIVAL';
-              if (impact > 3) this.hull = Math.max(0, this.hull - 10);
-            } else {
-              this.hull = Math.max(0, this.hull - (impact > 12 || this.speed > 65 ? 100 : 38));
-              this.speed *= 0.55;
-              this.touchdownMessage = 'HARD LANDING · HULL DAMAGED';
-              this.landed = true;
-              if (this.hull <= 0) this.crash('HARD CONTACT');
-            }
+            this.evaluateTouchdownImpact(impact);
           } else {
             const overWater = water >= ground;
             this.crash(overWater ? 'DITCHED IN THE SEA' : 'TERRAIN IMPACT');
@@ -150,8 +152,34 @@
       this.altitude = this.position.y;
       this.shake = C.damp(this.shake, 0, 4.2, delta);
     }
+    applySortieParameters(sortie) {
+      this.fuel = sortie.fuel;
+      this.crosswind.set(sortie.crosswind, 0, 0);
+    }
+    updateFuelAndHullState(delta) {
+      this.fuel = Math.max(0, this.fuel - (C.flight.idleFuel + this.throttle * C.flight.fuelRate) * delta);
+      this.hull = C.clamp(this.hull, 0, 100);
+      if (this.fuel <= 0) this.throttle = Math.max(0, this.throttle - 10 * delta);
+    }
+    evaluateTouchdownImpact(impact) {
+      this.landed = true;
+      if (impact < 4.5 && this.speed < 50) {
+        this.speed *= 0.86;
+        this.touchdownMessage = impact > 3 ? 'FIRM TOUCHDOWN · HULL SCRAPED' : 'GREASER · NICE ARRIVAL';
+        if (impact > 3) this.hull = Math.max(0, this.hull - 10);
+      } else {
+        this.hull = Math.max(0, this.hull - (impact > 12 || this.speed > 65 ? 100 : 38));
+        this.speed *= 0.55;
+        this.touchdownMessage = 'HARD LANDING · HULL DAMAGED';
+      }
+      if (this.hull <= 0) {
+        this.landed = false;
+        this.crash('HARD CONTACT');
+      }
+    }
     crash(reason) {
       this.crashed = true;
+      this.landed = false;
       this.crashReason = reason;
       this.hull = 0;
       this.speed = 0;

@@ -1,3 +1,5 @@
+// Job: Synthesize engine, wind and mission sounds with focus suspension.
+// Exports: KR.Audio.
 (function () {
   'use strict';
   KR.Audio = class KestrelAudio {
@@ -6,7 +8,7 @@
       this.engine = null; this.wind = null;
     }
     start() {
-      if (this.context) { this.context.resume(); return; }
+      if (this.context) { this.resume(); return; }
       const Context = window.AudioContext || window.webkitAudioContext;
       if (!Context) return;
       this.context = new Context();
@@ -18,7 +20,7 @@
       this.engineFilter.type = 'lowpass';
       this.engineFilter.frequency.value = 320;
       this.engineGain = this.context.createGain();
-      this.engineGain.gain.value = 0.055;
+      this.engineGain.gain.value = 0;
       this.engine.connect(this.engineFilter).connect(this.engineGain).connect(this.master);
       this.engine.start();
       const buffer = this.context.createBuffer(1, this.context.sampleRate * 2, this.context.sampleRate);
@@ -34,6 +36,12 @@
       this.windGain.gain.value = 0.0;
       this.wind.connect(this.windFilter).connect(this.windGain).connect(this.master);
       this.wind.start();
+    }
+    suspend() {
+      if (this.context && this.context.state === 'running') this.context.suspend().catch(() => {});
+    }
+    resume() {
+      if (this.context && !document.hidden && this.context.state === 'suspended') this.context.resume().catch(() => {});
     }
     update(state) {
       if (!this.context) return;

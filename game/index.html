@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kestrel Run</title>
   <style>
-    :root { color-scheme: dark; --cream: #f4e6bd; --gold: #ffca7a; --red: #e85b3f; --ink: #0c262b; --teal: #64d4c2; }
+    :root { color-scheme: dark; --cream: #eae4d7; --gold: #ffb25b; --red: #e63946; --ink: #1a2026; --teal: #79c9b7; }
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #0e2329; font-family: "Trebuchet MS", "Segoe UI", sans-serif; }
     #game, #game canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-    #hud { position: fixed; inset: 0; pointer-events: none; color: var(--cream); text-shadow: 0 2px 0 rgba(8, 26, 29, 0.7), 0 0 14px rgba(8, 26, 29, 0.36); }
+    #hud { position: fixed; inset: 0; z-index: 20; pointer-events: none; color: var(--cream); text-shadow: 0 1px 2px rgba(8, 19, 26, 0.9); }
     .flight-readouts { position: absolute; top: 22px; left: 24px; display: flex; gap: 10px; padding: 10px 12px; border-left: 3px solid var(--gold); background: linear-gradient(90deg, rgba(7, 26, 30, 0.78), rgba(7, 26, 30, 0.18)); }
     .readout { min-width: 84px; display: grid; grid-template-columns: auto auto; align-items: end; column-gap: 6px; }
     .readout span { grid-column: 1 / -1; color: var(--gold); font: 700 13px/1 monospace; letter-spacing: 0.16em; }
@@ -18,42 +18,59 @@
     .status { position: absolute; top: 22px; right: 24px; width: 232px; padding: 12px 14px; background: linear-gradient(270deg, rgba(7, 26, 30, 0.82), rgba(7, 26, 30, 0.18)); border-right: 3px solid var(--teal); }
     .status-row { display: flex; justify-content: space-between; margin: 4px 0 3px; font: 700 12px/1 monospace; letter-spacing: 0.12em; }
     .status-row b { color: var(--gold); font-size: 14px; }
+    #low-fuel { display: none; margin-left: 8px; padding: 2px 4px; background: #e63946; color: #fff1e5; font: 700 9px/1 monospace; letter-spacing: 0.03em; font-style: normal; }
+    #low-fuel.show { display: inline-block; }
     .bar { height: 6px; background: rgba(255, 244, 214, 0.17); overflow: hidden; }
-    .bar i { display: block; width: 100%; height: 100%; background: var(--gold); transition: width 0.18s linear; }
+    .bar i { display: block; width: 100%; height: 100%; background: var(--gold); transform-origin: left; transition: transform 0.18s linear; }
     .bar.hull i { background: var(--teal); }
     .mission { margin-top: 9px; padding-top: 7px; border-top: 1px solid rgba(255, 234, 191, 0.22); font: 700 11px/1.35 monospace; letter-spacing: 0.07em; }
     .mission b { display: block; color: var(--gold); font-size: 13px; }
-    .banner { position: absolute; top: 24px; left: 50%; transform: translate(-50%, -12px); opacity: 0; padding: 9px 22px; background: rgba(8, 27, 30, 0.82); border-bottom: 2px solid var(--gold); font: 700 17px/1 monospace; letter-spacing: 0.13em; white-space: nowrap; transition: opacity 0.2s, transform 0.2s; }
+    .navigation, .navigation-labels { display: flex; justify-content: space-between; margin-top: 7px; }
+    .navigation-labels { margin-top: 3px; color: #aabdc2; font-size: 9px; }
+    .banner { position: absolute; top: 24px; left: 50%; transform: translate(-50%, -12px); opacity: 0; padding: 10px 16px; background: rgba(16, 26, 34, 0.86); border-bottom: 2px solid var(--gold); font: 700 14px/1 monospace; letter-spacing: 0.08em; white-space: nowrap; transition: opacity 0.2s, transform 0.2s; }
     .banner.show { opacity: 1; transform: translate(-50%, 0); }
-    .hint { position: absolute; left: 24px; bottom: 20px; display: flex; flex-wrap: wrap; gap: 6px 15px; max-width: 580px; color: #d8e3ca; font: 700 11px/1.2 monospace; letter-spacing: 0.05em; opacity: 0.9; }
+    .hint { position: absolute; inset: auto 0 0; height: 28px; display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; gap: clamp(7px, 1.6vw, 24px); padding: 0 10px; background: rgba(9, 15, 22, 0.94); border-top: 1px solid rgba(234, 228, 215, 0.18); color: #eae4d7; font: 700 clamp(8px, 0.84vw, 11px)/1 monospace; letter-spacing: 0.015em; opacity: 1; visibility: visible; white-space: nowrap; }
     .hint span { white-space: nowrap; }
-    .throttle { position: absolute; right: 24px; bottom: 20px; width: 232px; display: grid; grid-template-columns: auto 1fr auto; gap: 9px; align-items: center; font: 700 11px/1 monospace; letter-spacing: 0.1em; }
+    .throttle { position: absolute; right: 24px; bottom: 46px; width: 232px; display: grid; grid-template-columns: auto 1fr auto; gap: 9px; align-items: center; font: 700 11px/1 monospace; letter-spacing: 0.1em; }
     .throttle b { color: var(--gold); min-width: 38px; text-align: right; }
-    .reticle { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px; border: 1px solid rgba(255, 237, 190, 0.72); border-radius: 50%; }
-    .reticle::before, .reticle::after { content: ""; position: absolute; background: rgba(255, 237, 190, 0.7); }
-    .reticle::before { left: 8px; top: -5px; width: 1px; height: 28px; }
-    .reticle::after { left: -5px; top: 8px; width: 28px; height: 1px; }
+    .reticle { display: none; position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; background: rgba(234, 228, 215, 0.8); border-radius: 50%; }
+    #hud.chase .reticle { display: block; }
+    #hud.cockpit .throttle { top: 187px; bottom: auto; }
+    #hud.briefing .flight-readouts, #hud.briefing .status, #hud.briefing .banner, #hud.briefing .throttle, #hud.briefing .reticle, #hud.briefing .toast { display: none; }
     .toast { position: absolute; left: 50%; bottom: 70px; transform: translate(-50%, 10px); padding: 8px 17px; background: rgba(8, 27, 30, 0.84); opacity: 0; font: 700 12px/1 monospace; letter-spacing: 0.09em; transition: 0.2s; }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
     #hud.stalled .banner::after { content: " · STALL"; color: var(--red); }
-    #briefing { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: radial-gradient(circle at 52% 47%, rgba(10, 32, 34, 0.1) 20%, rgba(7, 21, 23, 0.73) 100%); color: var(--cream); }
+    #briefing { position: fixed; inset: 0 0 28px; display: none; align-items: center; justify-content: flex-start; background: linear-gradient(90deg, rgba(10, 18, 25, 0.55), transparent 65%); color: var(--cream); }
     #briefing.show { display: flex; }
-    .briefing-card { width: min(470px, 45vw); margin-right: 44vw; padding: 32px 30px 26px; background: linear-gradient(135deg, rgba(14, 41, 42, 0.96), rgba(9, 27, 29, 0.92)); border: 1px solid rgba(255, 217, 143, 0.43); box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45); position: relative; }
+    .briefing-card { width: min(402px, 38vw); margin-left: 4vw; padding: 25px 26px 22px; background: linear-gradient(135deg, rgba(26, 32, 38, 0.97), rgba(14, 25, 33, 0.94)); border: 1px solid rgba(255, 178, 91, 0.4); box-shadow: 0 18px 55px rgba(0, 0, 0, 0.4); position: relative; }
     .briefing-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--gold); }
     .kicker { color: var(--gold); font: 700 12px/1 monospace; letter-spacing: 0.22em; }
-    h1 { margin: 11px 0 2px; font: 700 clamp(33px, 4.6vw, 54px)/0.96 "Trebuchet MS", sans-serif; letter-spacing: -0.045em; }
-    h2 { margin: 8px 0 18px; color: #bdd8c4; font: 700 14px/1.25 monospace; letter-spacing: 0.07em; }
-    .briefing-card p { margin: 0 0 17px; color: #d4e1d2; font-size: 15px; line-height: 1.5; }
+    h1 { margin: 11px 0 2px; font: 700 clamp(30px, 3.4vw, 43px)/0.96 "Trebuchet MS", sans-serif; letter-spacing: -0.045em; }
+    h2 { margin: 10px 0 10px; color: #bdd0ce; font: 700 12px/1.25 monospace; letter-spacing: 0.05em; }
+    .briefing-card p { margin: 0 0 15px; color: #c5d0d1; font-size: 13px; line-height: 1.45; }
+    .sortie-select { display: grid; gap: 5px; margin: 13px 0; }
+    .sortie-select button { display: block; width: 100%; padding: 11px 10px; text-align: left; color: #b9c8ce; border: 1px solid #3a4952; background: #202d35; font: 700 11px/1 monospace; letter-spacing: 0.055em; }
+    .sortie-select button.selected { color: var(--gold); border-color: var(--gold); background: #303239; box-shadow: inset 3px 0 var(--gold); }
+    .route-title { display: flex; justify-content: space-between; margin: 10px 0 6px; color: #91a9b3; font: 700 9px/1 monospace; letter-spacing: 0.1em; }
+    #route-map { display: block; width: 100%; height: 112px; border: 1px solid #3a4952; }
+    #sortie-detail { margin: 8px 0 14px; color: var(--gold); font: 700 9px/1.25 monospace; letter-spacing: 0.015em; }
+    .sortie-record { display: flex; justify-content: space-between; gap: 8px; margin: 9px 0 12px; color: #91a9b3; font: 700 10px/1.2 monospace; letter-spacing: 0.035em; }
+    .medal[data-medal="GOLD"] { color: #ffb25b; }
+    .medal[data-medal="SILVER"] { color: #cfdee7; }
+    .medal[data-medal="BRONZE"] { color: #d8996d; }
+    .medal[data-medal="COMPLETE"] { color: var(--teal); }
     .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 18px; margin: 0 0 23px; color: #b8d0c0; font: 700 11px/1.3 monospace; letter-spacing: 0.045em; }
     .keys b { color: var(--gold); }
     button { padding: 12px 23px; border: 0; background: var(--gold); color: #173033; font: 700 13px/1 monospace; letter-spacing: 0.12em; cursor: pointer; }
     button:hover, button:focus-visible { background: #ffe1a1; outline: 2px solid var(--cream); outline-offset: 3px; }
     .briefing-foot { display: flex; justify-content: space-between; gap: 18px; align-items: center; margin-top: 18px; color: #86a79d; font: 11px/1.35 monospace; }
-    #crash { position: fixed; inset: 0; display: none; place-items: center; background: rgba(7, 19, 21, 0.6); color: var(--cream); }
+    #crash { position: fixed; inset: 0 0 28px; z-index: 30; display: none; place-items: center; background: rgba(7, 19, 21, 0.6); color: var(--cream); }
     #crash.show { display: grid; }
-    #debrief { position: fixed; inset: 0; display: none; place-items: center; color: var(--cream); background: rgba(6, 28, 30, 0.46); }
+    #debrief { position: fixed; inset: 0 0 28px; z-index: 30; display: none; place-items: center; color: var(--cream); background: rgba(6, 28, 30, 0.46); }
     #debrief.show { display: grid; }
     #debrief .crash-card { border-color: var(--teal); } #debrief h2 { color: var(--teal); }
+    #debrief-medal { display: inline-block; margin: 6px 0 12px; padding: 12px 24px; border: 2px solid currentColor; border-radius: 50px; font: 700 clamp(24px, 5vw, 38px)/1 monospace; letter-spacing: 0.1em; }
+    .debrief-service { color: #91a9b3; font: 700 10px/1.2 monospace; letter-spacing: 0.07em; }
     .crash-card { width: min(460px, 82vw); padding: 30px 35px; background: rgba(20, 37, 37, 0.96); border-top: 4px solid var(--red); text-align: center; }
     .crash-card h2 { color: var(--red); font-size: 24px; letter-spacing: 0.13em; }
     .crash-reason { color: #dae5d8; font: 700 13px/1.4 monospace; }
@@ -64,12 +81,22 @@
       .status { top: 12px; right: 12px; width: 167px; padding: 8px 9px; }
       .status-row { font-size: 10px; } .mission { font-size: 9px; } .mission b { font-size: 10px; }
       .banner { top: 92px; font-size: 12px; padding: 7px 12px; }
-      .hint { left: 12px; bottom: 10px; gap: 3px 8px; max-width: 450px; font-size: 8px; }
-      .throttle { right: 12px; bottom: 10px; width: 167px; font-size: 9px; gap: 5px; }
+      .hint { height: 26px; gap: 8px; padding: 0 5px; font-size: 8px; }
+      .throttle { right: 12px; bottom: 40px; width: 167px; font-size: 9px; gap: 5px; }
+      #hud.cockpit .throttle { top: 166px; }
       .throttle b { min-width: 27px; font-size: 9px; }
       .toast { bottom: 36px; font-size: 10px; }
-      .briefing-card { padding: 23px 24px 20px; width: min(430px, 52vw); margin-right: 42vw; } h1 { font-size: 34px; } .briefing-card p { font-size: 12px; margin-bottom: 10px; }
+      .briefing-card { padding: 16px 18px; width: min(345px, 43vw); margin-left: 3vw; } h1 { font-size: 32px; } .briefing-card p { font-size: 11px; margin-bottom: 9px; }
       .keys { font-size: 9px; gap: 4px 9px; margin-bottom: 13px; } .briefing-foot { font-size: 9px; margin-top: 10px; }
+      .sortie-select { gap: 4px; margin: 9px 0; } .sortie-select button { padding: 9px 8px; font-size: 10px; }
+      #route-map { height: 86px; } #sortie-detail { font-size: 8px; margin: 7px 0 12px; } .briefing-card h2 { font-size: 10px; margin: 9px 0; }
+      .sortie-record { font-size: 8px; margin: 7px 0 9px; }
+      .briefing-foot { font-size: 8px; } .kicker { font-size: 10px; } button { padding: 11px 15px; font-size: 11px; }
+    }
+    @media (max-height: 600px) {
+      .briefing-card { padding: 14px 18px; }
+      .briefing-card p, .briefing-card .mission-name { display: none; }
+      #route-map { height: 86px; }
     }
   </style>
 </head>
@@ -78,17 +105,25 @@
   <div id="hud"></div>
   <div id="briefing" class="show">
     <section class="briefing-card">
-      <div class="kicker">KESTREL RUN · SORTIE 01</div>
+      <div class="kicker">K-1 FLIGHT DISPATCH · GOLDEN HOUR</div>
       <h1>KESTREL RUN</h1>
       <h2 class="mission-name">SORTIE 01 · ISLAND HOPPER</h2>
-      <p>Lift the Kestrel K-1 off Runway 36, thread all ten gold rings over the archipelago, then bring her home before the fuel runs dry. A gentle touchdown refuels and repairs the aircraft. Watch the hull.</p>
-      <div class="keys"><span><b>↑ ↓</b> pitch</span><span><b>← →</b> bank / turn</span><span><b>A D</b> rudder</span><span><b>SHIFT / CTRL</b> throttle</span><span><b>C</b> camera</span><span><b>F</b> free flight</span><span><b>M</b> mute</span><span><b>ENTER</b> begin</span></div>
-      <button id="briefing-start">BEGIN SORTIE</button>
-      <div class="briefing-foot"><span>RUNWAY 36 · 600 M · SEA LEVEL</span><span>10 RINGS · SCORE + TIME BONUS</span></div>
+      <p>Ten rings. One island strip. Fly the coast, mind your fuel, and bring the Kestrel home in one piece.</p>
+      <div class="sortie-select" role="group" aria-label="Select sortie">
+        <button id="sortie-0" class="selected" aria-pressed="true">01 ISLAND HOPPER</button>
+        <button id="sortie-1" aria-pressed="false">02 FUEL RUN</button>
+        <button id="sortie-2" aria-pressed="false">03 RIDGE CROSSWIND</button>
+      </div>
+      <div class="route-title"><span>FLIGHT PLAN / RWY 36</span><span>10 CHECKPOINTS</span></div>
+      <canvas id="route-map" width="640" height="240" aria-label="Island route map with ten numbered checkpoints"></canvas>
+      <div id="sortie-detail">FULL TANK · CALM AIR · COASTAL COURSE</div>
+      <div class="sortie-record"><span id="sortie-par">PAR 5:00</span><b id="sortie-best" class="medal" data-medal="NONE">BEST · NOT FLOWN</b></div>
+      <button id="briefing-start">BEGIN SORTIE · ENTER</button>
+      <div class="briefing-foot"><span>↑↓ / ←→ SELECT</span><span>600 M STRIP · LAND TO SERVICE</span></div>
     </section>
   </div>
   <div id="crash"><section class="crash-card"><div class="kicker">AIRFRAME LOST</div><h2>KESTREL DOWN</h2><p class="crash-reason">TERRAIN IMPACT</p><div class="crash-score">SCORE 0</div><button id="crash-restart">RESTART SORTIE</button></section></div>
-  <div id="debrief"><section class="crash-card"><div class="kicker">KESTREL K-1 · HOME SAFE</div><h2>SORTIE COMPLETE</h2><p id="debrief-time" class="crash-reason"></p><div id="debrief-score" class="crash-score"></div><button id="next-sortie">NEXT SORTIE · ENTER</button></section></div>
+  <div id="debrief"><section class="crash-card"><div class="kicker">KESTREL K-1 · HOME SAFE</div><h2>SORTIE COMPLETE</h2><div id="debrief-medal" class="medal" data-medal="COMPLETE" role="status">COMPLETE</div><p id="debrief-time" class="crash-reason"></p><p class="debrief-service">AIRFRAME REFUELLED AND REPAIRED</p><div id="debrief-score" class="crash-score"></div><button id="next-sortie">NEXT SORTIE · ENTER</button></section></div>
   <script src="vendor/three.min.js"></script>
   <script src="src/config.js"></script>
   <script src="src/random.js"></script>
@@ -101,7 +136,7 @@
   <script src="src/input.js"></script>
   <script src="src/audio.js"></script>
   <script src="src/camera.js"></script>
-  <script src="src/shots.js"></script>
+  <script src="src/shot-presets.js"></script>
   <script src="src/main.js"></script>
 </body>
 </html>

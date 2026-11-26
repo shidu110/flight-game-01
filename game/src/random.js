@@ -1,3 +1,5 @@
+// Job: Provide deterministic seeded scenery randomness.
+// Exports: KR.createRandom.
 (function () {
   'use strict';
   KR.createRandom = function mulberry32(seed) {

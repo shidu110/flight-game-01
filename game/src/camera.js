@@ -1,3 +1,5 @@
+// Job: Position chase, cockpit, tower and dispatch cameras.
+// Exports: KR.CameraRig.
 (function () {
   'use strict';
   const C = KR.Config;
@@ -12,6 +14,11 @@
       this.chaseSide = 3.5;
       this.position = new THREE.Vector3();
       this.look = new THREE.Vector3();
+      this.seat = new THREE.Vector3();
+      this.behind = new THREE.Vector3();
+      this.desired = new THREE.Vector3();
+      this.lead = new THREE.Vector3();
+      this.orientation = new THREE.Euler(0, 0, 0, 'YXZ');
       this.initialised = false;
       this.lookYaw = 0;
       this.lookPitch = 0;
@@ -25,15 +32,15 @@
     }
     update(delta, state, shots, time, input) {
       const heading = state.heading;
-      const wantedFov = this.mode === 'cockpit' ? 68 : 58;
+      const wantedFov = this.mode === 'cockpit' ? 68 : this.mode === 'briefing' ? 50 : 58;
       if (Math.abs(this.camera.fov - wantedFov) > 0.01) {
         this.camera.fov = wantedFov;
         this.camera.updateProjectionMatrix();
       }
       if (this.mode === 'cockpit') {
-        const seat = new THREE.Vector3(0, 0.58, -0.15);
-        seat.applyEuler(new THREE.Euler(state.pitch, -heading, -state.roll, 'YXZ'));
-        this.camera.position.copy(state.position).add(seat);
+        this.orientation.set(state.pitch, -heading, -state.roll, 'YXZ');
+        this.seat.set(0, 0.58, -0.15).applyEuler(this.orientation);
+        this.camera.position.copy(state.position).add(this.seat);
         if (input && !shots.active) {
           this.lookYaw = C.clamp(this.lookYaw - input.mouse.dx * 0.003, -0.95, 0.95);
           this.lookPitch = C.clamp(this.lookPitch - input.mouse.dy * 0.0025, -0.45, 0.5);
@@ -56,35 +63,33 @@
         return;
       }
       if (this.mode === 'briefing') {
-        const angle = time * 0.075 + 2.2;
-        const radius = 100;
-        const desired = new THREE.Vector3(
-          state.position.x + Math.cos(angle) * radius,
-          state.position.y + 50 + Math.sin(angle * 0.79) * 7,
-          state.position.z + Math.sin(angle) * radius
+        this.desired.set(
+          state.position.x - 22 + (shots.active ? 0 : Math.sin(time * 0.12) * 0.8),
+          state.position.y + 6.2,
+          state.position.z + 17
         );
-        this.camera.position.lerp(desired, this.initialised ? 1 - Math.exp(-1.6 * delta) : 1);
-        this.look.set(state.position.x - Math.sin(angle) * 24, state.position.y - 0.5, state.position.z + Math.cos(angle) * 24);
+        this.camera.position.lerp(this.desired, this.initialised ? 1 - Math.exp(-1.6 * delta) : 1);
+        this.look.set(state.position.x - 6, state.position.y - 0.7, state.position.z - 6);
         this.camera.lookAt(this.look);
         this.initialised = true;
         return;
       }
-      const behind = new THREE.Vector3(
+      this.behind.set(
         -Math.sin(heading) * this.chaseDistance + Math.cos(heading) * this.chaseSide,
         this.chaseHeight,
         Math.cos(heading) * this.chaseDistance + Math.sin(heading) * this.chaseSide
       );
-      const desired = new THREE.Vector3().copy(state.position).add(behind);
-      const ground = this.world.heightAt(desired.x, desired.z) + 2.5;
-      desired.y = Math.max(desired.y, ground);
-      this.position.lerp(desired, this.initialised ? 1 - Math.exp(-4.6 * delta) : 1);
+      this.desired.copy(state.position).add(this.behind);
+      const ground = this.world.heightAt(this.desired.x, this.desired.z) + 2.5;
+      this.desired.y = Math.max(this.desired.y, ground);
+      this.position.lerp(this.desired, this.initialised ? 1 - Math.exp(-4.6 * delta) : 1);
       this.camera.position.copy(this.position);
-      const lead = new THREE.Vector3(
+      this.lead.set(
         state.position.x + Math.sin(heading) * 18,
         state.position.y + 1.4,
         state.position.z - Math.cos(heading) * 18
       );
-      this.look.lerp(lead, this.initialised ? 1 - Math.exp(-5.5 * delta) : 1);
+      this.look.lerp(this.lead, this.initialised ? 1 - Math.exp(-5.5 * delta) : 1);
       this.camera.lookAt(this.look);
       this.camera.rotation.z += -state.roll * 0.18;
       this.initialised = true;
