@@ -1,8 +1,9 @@
 # Kestrel Run
 
-![Bounty](https://make.fun/badge/best-flight-game-20261126-0057.svg)
-![Live rank](https://make.fun/badge/best-flight-game-20261126-0057/shidu110/flight-game-01/rank.svg)
-![Live reward](https://make.fun/badge/best-flight-game-20261126-0057/shidu110/flight-game-01/reward.svg)
+[![make.fun · best-flight-game-20261126-0057](https://make.fun/badge/best-flight-game-20261126-0057.svg)](https://make.fun/bounty/best-flight-game-20261126-0057?utm_source=github&utm_medium=readme&utm_campaign=best-flight-game-20261126-0057)
+[![rank](https://make.fun/badge/best-flight-game-20261126-0057/shidu110/flight-game-01/rank.svg)](https://make.fun/bounty/best-flight-game-20261126-0057/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-flight-game-20261126-0057)
+[![reward](https://make.fun/badge/best-flight-game-20261126-0057/shidu110/flight-game-01/reward.svg)](https://make.fun/bounty/best-flight-game-20261126-0057?utm_source=github&utm_medium=readme&utm_campaign=best-flight-game-20261126-0057)
+
 
 Fly the fictional Kestrel K-1 through a warm, low-poly archipelago at sunset. Start cold on a 600 m island runway, raise the throttle, climb through ten glowing course rings, then nurse your fuel and hull home for a landing. A complete sortie earns ring points and a time bonus; stop on the runway for fuel and repairs, or press F and explore freely. The handcrafted bush plane, six illuminated cockpit instruments, procedural terrain, water, clouds and WebAudio sound all run from local files.
 
