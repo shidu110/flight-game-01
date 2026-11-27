@@ -1,16 +1,16 @@
-// Job: Provide deterministic seeded scenery randomness.
-// Exports: KR.createRandom.
+// Job: Seeded Mulberry32 PRNG for deterministic island terrain, cloud decks, and vegetation placement.
+// Exports: KR.createRandom
 (function () {
   'use strict';
   KR.createRandom = function mulberry32(seed) {
-    let state = seed >>> 0;
+    let s = seed >>> 0;
     function next() {
-      state += 0x6D2B79F5;
-      let value = Math.imul(state ^ state >>> 15, 1 | state);
-      value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
-      return ((value ^ value >>> 14) >>> 0) / 4294967296;
+      s += 0x6D2B79F5;
+      let v = Math.imul(s ^ s >>> 15, 1 | s);
+      v ^= v + Math.imul(v ^ v >>> 7, 61 | v);
+      return ((v ^ v >>> 14) >>> 0) / 4294967296;
     }
-    next.range = function (low, high) { return low + next() * (high - low); };
+    next.range = (lo, hi) => lo + next() * (hi - lo);
     return next;
   };
 })();

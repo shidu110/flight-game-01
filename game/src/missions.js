@@ -1,22 +1,13 @@
-// Job: Manage shared course rings, sortie progression and session medals.
-// Exports: KR.Missions.
+// Job: Sortie manager: 10-ring coastal & high-ridge courses, 3 sortie modes (Island Hopper, 60% Fuel Run, 7 m/s Ridge Crosswind), and par-time/hull medals.
+// Exports: KR.Missions
 (function () {
   'use strict';
-  const C = KR.Config;
-  const MEDALS = ['COMPLETE', 'BRONZE', 'SILVER', 'GOLD'];
+  const C = KR.Config, MEDALS = ['COMPLETE', 'BRONZE', 'SILVER', 'GOLD'];
   KR.Missions = class KestrelMissions {
     constructor(scene, world) {
-      this.scene = scene;
-      this.world = world;
-      this.rings = [];
-      this.next = 0;
-      this.state = 'briefing';
-      this.elapsed = 0;
-      this.score = 0;
-      this.freeFlight = false;
-      this.frozen = false;
-      this.selectedSortie = 0;
-      this.result = null;
+      this.scene = scene; this.world = world; this.rings = [];
+      this.next = this.elapsed = this.score = this.selectedSortie = 0;
+      this.state = 'briefing'; this.freeFlight = this.frozen = false; this.result = null;
       this.sorties = [
         { name: '01 · ISLAND HOPPER', fuel: 100, crosswind: 0, parTime: 300, detail: 'FULL TANK · CALM AIR · COASTAL COURSE' },
         { name: '02 · FUEL RUN', fuel: 60, crosswind: 0, parTime: 300, detail: '60% FUEL · SAME COURSE · MAKE IT HOME' },
@@ -27,52 +18,46 @@
     }
     buildCourse() {
       const rw = C.runway;
-      const points = [
+      const pts = [
         [rw.x, 45, rw.z - 430], [120, 95, -580], [40, 120, 600],
         [620, 100, 720], [930, 85, 900], [530, 105, 1340],
-        [-30, 145, 1100], [-1000, 100, 50], [-900, 105, -250],
-        [rw.x, 48, 700]
+        [-30, 145, 1100], [-1000, 100, 50], [-900, 105, -250], [rw.x, 48, 700]
       ];
-      this.standardPoints = points;
-      const torusMaterial = (color, opacity, intensity) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: intensity, roughness: 0.5, transparent: true, opacity, side: THREE.DoubleSide, toneMapped: false });
-      const flatMaterial = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
-      const active = { torus: torusMaterial(0xff9f1c, 1, 1.4), halo: flatMaterial(0xff9f1c, 0.14), inner: flatMaterial(0xff9f1c, 0.035), brackets: new THREE.MeshBasicMaterial({ color: 0x1b2631, side: THREE.DoubleSide, toneMapped: false }) };
-      const idle = { torus: torusMaterial(0x38bdf8, 0.16, 0.75), upcoming: torusMaterial(0x38bdf8, 0.55, 0.75), passed: torusMaterial(0x38bdf8, 0.06, 0.75), halo: flatMaterial(0x38bdf8, 0.025), inner: flatMaterial(0xff9f1c, 0) };
+      this.standardPoints = pts;
+      const tm = (c, o, ei) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: ei, roughness: 0.45, transparent: true, opacity: o, side: THREE.DoubleSide, toneMapped: false });
+      const fm = (c, o) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+      const active = { torus: tm(0xffb42c, 1, 1.55), halo: fm(0xffc95c, 0.2), inner: fm(0xffb42c, 0.03), brackets: new THREE.MeshBasicMaterial({ color: 0x1b2631, side: THREE.DoubleSide, toneMapped: false }) };
+      const idle = { torus: tm(0x38bdf8, 0.16, 0.75), upcoming: tm(0x38bdf8, 0.55, 0.75), passed: tm(0x38bdf8, 0.06, 0.75), halo: fm(0x38bdf8, 0.025), inner: fm(0xff9f1c, 0) };
       active.details = [active.inner, active.brackets];
       idle.details = [idle.inner, idle.inner];
       this.ringMaterials = { active, idle };
-      const disk = new THREE.CircleGeometry(15, 28).toNonIndexed();
-      const detailParts = [disk];
-      for (let corner = 0; corner < 4; corner++) {
-        for (const side of [-1, 1]) {
-          const arm = new THREE.BoxGeometry(1.8, 7.5, 1.5).toNonIndexed();
-          arm.rotateZ(side * 0.6); arm.translate(side * 2.2, 20.6, 0); arm.rotateZ(corner * Math.PI / 2);
-          detailParts.push(arm);
+      const disk = new THREE.CircleGeometry(15.2, 28).toNonIndexed(), parts = [disk];
+      for (let c = 0; c < 4; c++) {
+        for (const s of [-1, 1]) {
+          const arm = new THREE.BoxGeometry(1.5, 6.8, 1.3).toNonIndexed();
+          arm.rotateZ(s * 0.6); arm.translate(s * 2.1, 20.4, 0); arm.rotateZ(c * Math.PI / 2);
+          parts.push(arm);
         }
       }
-      const detailVertices = new Float32Array(detailParts.reduce((size, part) => size + part.attributes.position.array.length, 0));
-      let offset = 0;
-      for (const part of detailParts) {
-        detailVertices.set(part.attributes.position.array, offset);
-        offset += part.attributes.position.array.length;
-      }
+      const verts = new Float32Array(parts.reduce((n, p) => n + p.attributes.position.array.length, 0));
+      let off = 0;
+      for (const p of parts) { verts.set(p.attributes.position.array, off); off += p.attributes.position.array.length; }
       const details = new THREE.BufferGeometry();
-      details.setAttribute('position', new THREE.BufferAttribute(detailVertices, 3));
+      details.setAttribute('position', new THREE.BufferAttribute(verts, 3));
       details.addGroup(0, disk.attributes.position.count, 0);
-      details.addGroup(disk.attributes.position.count, detailVertices.length / 3 - disk.attributes.position.count, 1);
-      for (const part of detailParts) part.dispose();
-      this.ringGeometries = { torus: new THREE.TorusGeometry(16, 2.21, 10, 48), halo: new THREE.TorusGeometry(16, 3.1, 8, 40), details };
-      points.forEach((point, index) => {
+      details.addGroup(disk.attributes.position.count, verts.length / 3 - disk.attributes.position.count, 1);
+      for (const p of parts) p.dispose();
+      this.ringGeometries = { torus: new THREE.TorusGeometry(16, 1.65, 10, 48), halo: new THREE.TorusGeometry(16, 2.55, 8, 40), details };
+      pts.forEach((p, i) => {
         const ring = new THREE.Group();
         const torus = new THREE.Mesh(this.ringGeometries.torus, idle.torus);
         const halo = new THREE.Mesh(this.ringGeometries.halo, idle.halo);
-        ring.add(torus, halo);
         const inner = new THREE.Mesh(details, idle.details);
-        ring.add(inner);
-        ring.position.set(point[0], point[1], point[2]);
-        const previousPoint = points[(index + points.length - 1) % points.length];
-        ring.lookAt(point[0] + point[0] - previousPoint[0], point[1], point[2] + point[2] - previousPoint[2]);
-        ring.userData = { torus, halo, inner, baseY: point[1], index };
+        ring.add(torus, halo, inner);
+        ring.position.set(p[0], p[1], p[2]);
+        const prev = pts[(i + pts.length - 1) % pts.length];
+        ring.lookAt(p[0] * 2 - prev[0], p[1], p[2] * 2 - prev[2]);
+        ring.userData = { torus, halo, inner, baseY: p[1], index: i };
         this.scene.add(ring);
         this.rings.push(ring);
       });
@@ -86,86 +71,62 @@
     get sortie() { return this.sorties[this.selectedSortie]; }
     selectSortie(index) {
       this.selectedSortie = (index + this.sorties.length) % this.sorties.length;
-      const order = this.selectedSortie === 2 ? [0, 2, 6, 7, 8, 1, 3, 4, 5, 9] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-      const points = order.map((pointIndex, courseIndex) => {
-        const point = this.standardPoints[pointIndex].slice();
-        if (this.selectedSortie === 2 && courseIndex > 0 && courseIndex < 9) point[1] += 65 + courseIndex % 3 * 20;
-        return point;
+      const ord = this.selectedSortie === 2 ? [0, 2, 6, 7, 8, 1, 3, 4, 5, 9] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+      const pts = ord.map((pi, ci) => {
+        const p = this.standardPoints[pi].slice();
+        if (this.selectedSortie === 2 && ci > 0 && ci < 9) p[1] += 65 + ci % 3 * 20;
+        return p;
       });
-      this.rings.forEach((ring, ringIndex) => {
-        const point = points[ringIndex], previous = points[(ringIndex + 9) % 10];
-        ring.position.set(...point);
-        ring.userData.baseY = point[1];
-        ring.lookAt(point[0] * 2 - previous[0], point[1], point[2] * 2 - previous[2]);
+      this.rings.forEach((ring, i) => {
+        const p = pts[i], prev = pts[(i + 9) % 10];
+        ring.position.set(...p);
+        ring.userData.baseY = p[1];
+        ring.lookAt(p[0] * 2 - prev[0], p[1], p[2] * 2 - prev[2]);
       });
       return this.sortie;
     }
     start() {
-      this.freeFlight = false;
-      this.state = 'flying';
-      this.next = 0;
-      this.elapsed = 0;
-      this.score = 0;
-      this.result = null;
-      this.setRingVisibility(true);
-      this.updateRingMaterials();
+      this.freeFlight = false; this.state = 'flying'; this.next = this.elapsed = this.score = 0; this.result = null;
+      this.setRingVisibility(true); this.updateRingMaterials();
     }
     reset() {
-      this.state = 'briefing';
-      this.next = 0;
-      this.result = null;
-      this.setRingVisibility(true);
-      this.updateRingMaterials();
+      this.state = 'briefing'; this.next = 0; this.result = null;
+      this.setRingVisibility(true); this.updateRingMaterials();
     }
-    setRingVisibility(visible) {
-      for (const ring of this.rings) ring.visible = visible;
-      this.guide.visible = visible && this.next < this.rings.length - 1;
+    setRingVisibility(v) {
+      for (const r of this.rings) r.visible = v;
+      this.guide.visible = v && this.next < this.rings.length - 1;
     }
-    toggleFreeFlight() {
-      this.freeFlight = !this.freeFlight;
-      this.setRingVisibility(!this.freeFlight);
-      this.updateRingMaterials();
-    }
+    toggleFreeFlight() { this.freeFlight = !this.freeFlight; this.setRingVisibility(!this.freeFlight); this.updateRingMaterials(); }
     updateRingMaterials() {
-      const active = this.ringMaterials.active, idle = this.ringMaterials.idle;
-      this.rings.forEach((ring, index) => {
-        const materials = index === this.next && !this.freeFlight ? active : idle;
-        ring.userData.torus.material = materials === active ? active.torus : index < this.next ? idle.passed : index === this.next + 1 ? idle.upcoming : idle.torus;
-        ring.userData.halo.material = materials.halo;
-        ring.userData.inner.material = materials.details;
-        ring.userData.inner.visible = materials === active;
+      const a = this.ringMaterials.active, id = this.ringMaterials.idle;
+      this.rings.forEach((r, i) => {
+        const act = i === this.next && !this.freeFlight, m = act ? a : id;
+        r.userData.torus.material = act ? a.torus : i < this.next ? id.passed : i === this.next + 1 ? id.upcoming : id.torus;
+        r.userData.halo.material = m.halo;
+        r.userData.inner.material = m.details;
+        r.userData.inner.visible = act;
       });
-      this.materialNext = this.next;
-      this.materialFreeFlight = this.freeFlight;
+      this.materialNext = this.next; this.materialFreeFlight = this.freeFlight;
     }
-    update(delta, state, time) {
-      if (!this.frozen && this.state === 'flying') this.elapsed += delta;
+    update(dt, state, time) {
+      if (!this.frozen && this.state === 'flying') this.elapsed += dt;
       if (this.materialNext !== this.next || this.materialFreeFlight !== this.freeFlight) this.updateRingMaterials();
-      if (!this.frozen) this.ringMaterials.active.halo.opacity = 0.14 + Math.sin(time * 4) * 0.035;
-      for (let index = 0; index < this.rings.length; index++) {
-        const ring = this.rings[index];
-        const active = index === this.next && !this.freeFlight;
-        if (!this.frozen) ring.scale.setScalar(active ? 1 + Math.sin(time * 4) * 0.09 : 1);
-        ring.position.y = ring.userData.baseY + (this.frozen ? 0 : Math.sin(time * 1.3 + index) * 1.1);
+      if (!this.frozen) this.ringMaterials.active.halo.opacity = 0.2 + Math.sin(time * 4) * 0.04;
+      for (let i = 0; i < this.rings.length; i++) {
+        const r = this.rings[i], act = i === this.next && !this.freeFlight;
+        if (!this.frozen) r.scale.setScalar(act ? 1 + Math.sin(time * 4) * 0.09 : 1);
+        r.position.y = r.userData.baseY + (this.frozen ? 0 : Math.sin(time * 1.3 + i) * 1.1);
       }
       this.guide.visible = !this.freeFlight && this.next < this.rings.length - 1 && this.state !== 'landed';
       if (this.guide.visible) {
-        const positions = this.guide.geometry.attributes.position;
-        const current = this.rings[this.next].position, following = this.rings[this.next + 1].position;
-        positions.setXYZ(0, current.x, current.y, current.z);
-        positions.setXYZ(1, following.x, following.y, following.z);
-        positions.needsUpdate = true;
-        const distances = this.guide.geometry.attributes.lineDistance;
-        distances.setX(1, current.distanceTo(following));
-        distances.needsUpdate = true;
+        const pos = this.guide.geometry.attributes.position, cur = this.rings[this.next].position, nxt = this.rings[this.next + 1].position;
+        pos.setXYZ(0, cur.x, cur.y, cur.z); pos.setXYZ(1, nxt.x, nxt.y, nxt.z); pos.needsUpdate = true;
+        const d = this.guide.geometry.attributes.lineDistance; d.setX(1, cur.distanceTo(nxt)); d.needsUpdate = true;
       }
       if (this.frozen || this.state !== 'flying' || this.freeFlight || this.next >= this.rings.length) return;
-      const target = this.rings[this.next];
-      const distance = state.position.distanceTo(target.position);
-      if (distance < 19) {
-        this.score += 100;
-        this.next++;
-        this.updateRingMaterials();
+      if (state.position.distanceTo(this.rings[this.next].position) < 19) {
+        this.score += 100; this.next++; this.updateRingMaterials();
         if (this.onRing) this.onRing(this.next);
       }
     }
@@ -177,8 +138,7 @@
       return 'COMPLETE';
     }
     complete(state) {
-      if (state.crashed) return false;
-      if (this.next < this.rings.length) return false;
+      if (state.crashed || this.next < this.rings.length) return false;
       if (this.state === 'landed') return true;
       if (this.state !== 'flying' || this.freeFlight || this.frozen) return false;
       if (state.onGround && state.speed < 20 && this.world.isRunway(state.position.x, state.position.z)) {

@@ -1,5 +1,5 @@
-// Job: Track held controls, one-shot actions and cockpit mouse look.
-// Exports: KR.Input.
+// Job: Keyboard hold/edge state and cockpit drag-to-look mouse input handler with blur reset.
+// Exports: KR.Input
 (function () {
   'use strict';
   KR.Input = class KestrelInput {
@@ -8,30 +8,26 @@
       this.mouse = { down: false, x: 0, y: 0, dx: 0, dy: 0 };
       this.listeners = [];
       this.controls = { pitch: 0, roll: 0 };
-      addEventListener('keydown', (event) => {
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
-        if (event.repeat) return;
-        this.keys[event.code] = true;
-        for (const listener of this.listeners) listener(event);
+      const nav = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
+      addEventListener('keydown', (e) => {
+        if (nav.includes(e.code)) e.preventDefault();
+        if (e.repeat) return;
+        this.keys[e.code] = true;
+        for (const fn of this.listeners) fn(e);
       });
-      addEventListener('keyup', (event) => { this.keys[event.code] = false; });
-      addEventListener('mousedown', (event) => {
-        this.mouse.down = true;
-        this.mouse.x = event.clientX; this.mouse.y = event.clientY;
-      });
+      addEventListener('keyup', (e) => { this.keys[e.code] = false; });
+      addEventListener('mousedown', (e) => { this.mouse.down = true; this.mouse.x = e.clientX; this.mouse.y = e.clientY; });
       addEventListener('mouseup', () => { this.mouse.down = false; });
-      addEventListener('mousemove', (event) => {
+      addEventListener('mousemove', (e) => {
         if (!this.mouse.down) return;
-        this.mouse.dx += event.clientX - this.mouse.x;
-        this.mouse.dy += event.clientY - this.mouse.y;
-        this.mouse.x = event.clientX; this.mouse.y = event.clientY;
+        this.mouse.dx += e.clientX - this.mouse.x;
+        this.mouse.dy += e.clientY - this.mouse.y;
+        this.mouse.x = e.clientX; this.mouse.y = e.clientY;
       });
       addEventListener('blur', () => { this.keys = {}; this.mouse.down = false; });
     }
-    onKey(listener) { this.listeners.push(listener); }
-    endFrame() {
-      this.mouse.dx = 0; this.mouse.dy = 0;
-    }
+    onKey(fn) { this.listeners.push(fn); }
+    endFrame() { this.mouse.dx = 0; this.mouse.dy = 0; }
     get pitchUp() { return !!this.keys.ArrowUp; }
     get pitchDown() { return !!this.keys.ArrowDown; }
     get rollLeft() { return !!this.keys.ArrowLeft; }
